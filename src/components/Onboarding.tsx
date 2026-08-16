@@ -16,6 +16,7 @@ import * as Location from "expo-location";
 import { darkColors, lightColors, makeType, spacing, type ThemeMode } from "../theme";
 import { useTheme } from "../context/ThemeContext";
 import { SHEETBEST } from "../lib/api";
+import { supabase } from "../lib/supabase";
 
 const TOTAL_STEPS = 4;
 
@@ -28,6 +29,7 @@ type Profile = {
   alertThreshold: "HIGH" | "ALL";
   name: string;
   email: string;
+  password: string;
   zip: string;
 };
 
@@ -40,6 +42,7 @@ const DEFAULT_PROFILE: Profile = {
   alertThreshold: "ALL",
   name: "",
   email: "",
+  password: "",
   zip: "",
 };
 
@@ -142,34 +145,86 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
       setError("Enter a valid email address.");
       return;
     }
+    if (profile.password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
     setSubmitting(true);
     setError("");
+
     try {
-      await fetch(SHEETBEST, {
+      const email = profile.email.trim().toLowerCase();
+
+      // Try sign-up first; if already registered, sign in instead
+      let userId: string | undefined;
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password: profile.password,
+      });
+
+      if (signUpError) {
+        if (signUpError.message.toLowerCase().includes("already registered")) {
+          // Returning user after reinstall — sign them back in
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password: profile.password,
+          });
+          if (signInError) {
+            setError("This email is already registered. Check your password.");
+            setSubmitting(false);
+            return;
+          }
+          userId = signInData.user?.id;
+        } else {
+          setError(signUpError.message);
+          setSubmitting(false);
+          return;
+        }
+      } else {
+        userId = signUpData.user?.id;
+      }
+
+      // Save household profile to Supabase
+      if (userId) {
+        await supabase.from("users").upsert({
+          id:                   userId,
+          name:                 profile.name.trim(),
+          zip_code:             profile.zip.trim(),
+          household_size:       profile.householdSize,
+          vulnerabilities:      profile.vulnerabilities,
+          allergies:            profile.allergies,
+          medications_flag:     profile.medicationsFlag,
+          alert_threshold:      profile.alertThreshold,
+          monitored_categories: profile.categories,
+          theme:                mode,
+        });
+      }
+
+      // SheetBest analytics capture — fire and forget
+      fetch(SHEETBEST, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: profile.name.trim(),
-          email: profile.email.trim().toLowerCase(),
-          zip_code: profile.zip.trim(),
-          household_size: profile.householdSize,
+          name: profile.name.trim(), email,
+          zip_code: profile.zip.trim(), household_size: profile.householdSize,
           vulnerabilities: profile.vulnerabilities.join(", "),
           allergies: profile.allergies.join(", "),
           medications_flag: profile.medicationsFlag,
           categories: profile.categories.join(", "),
           alert_threshold: profile.alertThreshold,
-          app_theme: mode,
-          source: "mobile_onboarding",
+          app_theme: mode, source: "mobile_onboarding",
           timestamp: new Date().toISOString(),
         }),
-      });
+      }).catch(() => {});
+
+      // Local cache — works offline and before email is confirmed
+      await AsyncStorage.setItem("@rr:onboarded", userId ?? "true");
+      await AsyncStorage.setItem("@rr:profile", JSON.stringify(profile));
+      onComplete();
     } catch {
-      // Non-blocking — proceed even if SheetBest is unavailable
+      setError("Something went wrong. Please try again.");
     }
-    await AsyncStorage.setItem("@rr:onboarded", "true");
-    await AsyncStorage.setItem("@rr:profile", JSON.stringify(profile));
     setSubmitting(false);
-    onComplete();
   };
 
   const sharedProps = { colors, t, accent: colors.accent };
@@ -533,6 +588,21 @@ function StepContact({ colors, t, accent, profile, update, onSubmit, onBack, sub
           placeholder="you@example.com"
           placeholderTextColor={colors.textMuted}
           keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          selectionColor={accent}
+        />
+
+        <Text style={[t.label, styles.fieldGapLg]}>
+          Password <Text style={{ color: accent }}>*</Text>
+        </Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+          value={profile.password}
+          onChangeText={(v) => update({ password: v })}
+          placeholder="6+ characters"
+          placeholderTextColor={colors.textMuted}
+          secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
           selectionColor={accent}
