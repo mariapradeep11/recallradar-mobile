@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "RecallRadar",
+    "slug": "recallradar",
+    "scheme": "recallradar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0c0b0a",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.recallradar.mobile"
+    },
+    "android": {
+      "package": "app.recallradar.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0c0b0a"
+      }
+    },
+    "web": {
+      "favicon": "./assets/icon.png",
+      "backgroundColor": "#0c0b0a"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "RecallRadar uses your camera to scan product barcodes."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
