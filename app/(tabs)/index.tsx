@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 import { RecallCard } from "../../src/components/RecallCard";
 import { useTheme } from "../../src/context/ThemeContext";
 import { radius, spacing } from "../../src/theme";
@@ -81,12 +82,21 @@ function LoadingDots({ accent }: { accent: string }) {
 export default function SearchScreen() {
   const { colors, type: t } = useTheme();
   const insets = useSafeAreaInsets();
+  const { q: scannedQuery } = useLocalSearchParams<{ q?: string }>();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category>("food");
   const [results, setResults] = useState<Recall[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
+
+  // Auto-trigger search when arriving from the barcode scanner
+  useEffect(() => {
+    if (scannedQuery) {
+      setQuery(scannedQuery);
+      run(scannedQuery);
+    }
+  }, [scannedQuery]);
 
   const run = async (overrideQuery?: string) => {
     const term = overrideQuery ?? query;
