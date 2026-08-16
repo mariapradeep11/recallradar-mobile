@@ -1,8 +1,10 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { colors } from "../../src/theme";
+import { useTheme } from "../../src/context/ThemeContext";
 
 export default function TabsLayout() {
+  const { colors } = useTheme();
+
   return (
     <Tabs
       screenOptions={{
