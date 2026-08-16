@@ -12,10 +12,12 @@ import {
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { colors, radius, spacing, type } from "../theme";
+import * as Location from "expo-location";
+import { darkColors, lightColors, makeType, spacing, type ThemeMode } from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import { SHEETBEST } from "../lib/api";
 
-const TOTAL_STEPS = 4; // steps 1–4 (0 is welcome)
+const TOTAL_STEPS = 4;
 
 type Profile = {
   householdSize: number;
@@ -41,34 +43,40 @@ const DEFAULT_PROFILE: Profile = {
   zip: "",
 };
 
-// ── chip helpers ────────────────────────────────────────────────────────────
 function toggle<T>(arr: T[], item: T): T[] {
   return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
 }
 
+// ── chip ────────────────────────────────────────────────────────────────────
 function Chip({
   label,
   active,
   onPress,
   accent,
+  colors,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   accent?: boolean;
+  colors: ReturnType<typeof darkColors | typeof lightColors | any>;
 }) {
   return (
     <Pressable
       onPress={onPress}
       style={[
-        styles.chip,
-        active && (accent ? styles.chipAccentActive : styles.chipActive),
+        chip.base,
+        { borderColor: colors.border, backgroundColor: "transparent" },
+        active && !accent && { backgroundColor: colors.surface2, borderColor: colors.borderStrong },
+        active && accent && { backgroundColor: "rgba(198,91,69,0.15)", borderColor: colors.accent },
       ]}
     >
       <Text
         style={[
-          styles.chipText,
-          active && (accent ? styles.chipAccentText : styles.chipActiveText),
+          chip.text,
+          { color: colors.textMuted },
+          active && !accent && { color: colors.text },
+          active && accent && { color: colors.accent, fontWeight: "600" },
         ]}
       >
         {label}
@@ -77,14 +85,30 @@ function Chip({
   );
 }
 
+const chip = StyleSheet.create({
+  base: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  text: { fontSize: 13, fontWeight: "500" },
+});
+
 // ── progress dots ───────────────────────────────────────────────────────────
-function ProgressDots({ step }: { step: number }) {
+function ProgressDots({ step, accent }: { step: number; accent: string }) {
   return (
-    <View style={styles.dotsRow}>
+    <View style={{ flexDirection: "row", gap: 6 }}>
       {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
         <View
           key={i}
-          style={[styles.dot, i < step && styles.dotActive, i === step - 1 && styles.dotCurrent]}
+          style={{
+            height: 6,
+            borderRadius: 3,
+            width: i === step - 1 ? 18 : 6,
+            backgroundColor: i < step ? accent : "rgba(120,110,100,0.3)",
+            opacity: i === step - 1 ? 1 : i < step - 1 ? 0.5 : 1,
+          }}
         />
       ))}
     </View>
@@ -93,6 +117,8 @@ function ProgressDots({ step }: { step: number }) {
 
 // ── main component ──────────────────────────────────────────────────────────
 export function Onboarding({ onComplete }: { onComplete: () => void }) {
+  const { colors, mode, setMode } = useTheme();
+  const t = makeType(colors);
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +129,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
   const advance = () => {
     Animated.sequence([
-      Animated.timing(slideAnim, { toValue: -30, duration: 160, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: -24, duration: 140, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
     ]).start();
     setStep((s) => s + 1);
@@ -132,12 +158,13 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           medications_flag: profile.medicationsFlag,
           categories: profile.categories.join(", "),
           alert_threshold: profile.alertThreshold,
+          app_theme: mode,
           source: "mobile_onboarding",
           timestamp: new Date().toISOString(),
         }),
       });
     } catch {
-      // Non-blocking — proceed even if SheetBest is down
+      // Non-blocking — proceed even if SheetBest is unavailable
     }
     await AsyncStorage.setItem("@rr:onboarded", "true");
     await AsyncStorage.setItem("@rr:profile", JSON.stringify(profile));
@@ -145,39 +172,29 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     onComplete();
   };
 
+  const sharedProps = { colors, t, accent: colors.accent };
+
   return (
     <KeyboardAvoidingView
-      style={styles.root}
+      style={[styles.root, { backgroundColor: colors.bg }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Animated.View style={[styles.screen, { transform: [{ translateY: slideAnim }] }]}>
-        {step === 0 && <StepWelcome onNext={advance} />}
+        {step === 0 && (
+          <StepWelcome {...sharedProps} mode={mode} onModeChange={setMode} onNext={advance} />
+        )}
         {step === 1 && (
-          <StepHousehold
-            profile={profile}
-            update={p}
-            onNext={advance}
-            onBack={back}
-          />
+          <StepHousehold {...sharedProps} profile={profile} update={p} onNext={advance} onBack={back} />
         )}
         {step === 2 && (
-          <StepSensitivities
-            profile={profile}
-            update={p}
-            onNext={advance}
-            onBack={back}
-          />
+          <StepSensitivities {...sharedProps} profile={profile} update={p} onNext={advance} onBack={back} />
         )}
         {step === 3 && (
-          <StepCategories
-            profile={profile}
-            update={p}
-            onNext={advance}
-            onBack={back}
-          />
+          <StepCategories {...sharedProps} profile={profile} update={p} onNext={advance} onBack={back} />
         )}
         {step === 4 && (
           <StepContact
+            {...sharedProps}
             profile={profile}
             update={p}
             onSubmit={submit}
@@ -191,21 +208,93 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   );
 }
 
-// ── Step 0: Welcome ─────────────────────────────────────────────────────────
-function StepWelcome({ onNext }: { onNext: () => void }) {
+// ── shared step header ──────────────────────────────────────────────────────
+function StepHeader({
+  step,
+  title,
+  onBack,
+  colors,
+  t,
+  accent,
+}: {
+  step: number;
+  title: string;
+  onBack: () => void;
+  colors: any;
+  t: any;
+  accent: string;
+}) {
   return (
-    <ScrollView contentContainerStyle={styles.welcomeContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.welcomeOrb}>
-        <Text style={styles.orbRing}>◎</Text>
+    <View style={[styles.stepHeader, { borderBottomColor: colors.border }]}>
+      <View style={styles.stepTopRow}>
+        <Pressable onPress={onBack} hitSlop={12}>
+          <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "500" }}>← Back</Text>
+        </Pressable>
+        <Text style={{ fontSize: 10, letterSpacing: 0.8, textTransform: "uppercase", fontWeight: "600", color: colors.textMuted }}>
+          {step} of {TOTAL_STEPS}
+        </Text>
+      </View>
+      <ProgressDots step={step} accent={accent} />
+      <Text style={[t.h1, { marginTop: 12 }]}>{title}</Text>
+    </View>
+  );
+}
+
+function NextButton({
+  onPress,
+  label = "Continue →",
+  colors,
+}: {
+  onPress: () => void;
+  label?: string;
+  colors: any;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.primaryBtn, { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 }]}
+      onPress={onPress}
+    >
+      <Text style={styles.primaryBtnText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+// ── Step 0: Welcome ─────────────────────────────────────────────────────────
+function StepWelcome({
+  colors, t, accent, mode, onModeChange, onNext,
+}: {
+  colors: any; t: any; accent: string; mode: ThemeMode; onModeChange: (m: ThemeMode) => void; onNext: () => void;
+}) {
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.welcomeContent]}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Theme toggle — top right */}
+      <View style={styles.welcomeTopBar}>
+        <View style={{ flex: 1 }} />
+        <Pressable
+          onPress={() => onModeChange(mode === "dark" ? "light" : "dark")}
+          style={[styles.themeToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <Text style={{ fontSize: 13 }}>{mode === "dark" ? "☀" : "☾"}</Text>
+          <Text style={{ fontSize: 11, color: colors.textSoft, fontWeight: "600" }}>
+            {mode === "dark" ? "Light" : "Dark"}
+          </Text>
+        </Pressable>
       </View>
 
-      <Text style={styles.welcomeWordmark}>
-        RECALL<Text style={{ color: colors.accent }}>RADAR</Text>
+      <Text style={{ fontSize: 40, color: accent, opacity: 0.85, marginBottom: spacing.xl }}>◎</Text>
+
+      <Text style={[styles.wordmark, { color: colors.text }]}>
+        RECALL<Text style={{ color: accent }}>RADAR</Text>
       </Text>
 
-      <Text style={styles.welcomeHero}>Never find out{"\n"}too late.</Text>
+      <Text style={[styles.welcomeHero, { color: colors.text }]}>
+        Never find out{"\n"}too late.
+      </Text>
 
-      <Text style={styles.welcomeBody}>
+      <Text style={[t.body, styles.welcomeBody]}>
         RecallRadar monitors what you eat, use, drive, and bring home — so you know when
         something becomes unsafe and what to do next.
       </Text>
@@ -217,20 +306,20 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
           { icon: "◇", text: "Actionable, not just informational" },
         ].map(({ icon, text }) => (
           <View key={text} style={styles.benefitRow}>
-            <Text style={styles.benefitIcon}>{icon}</Text>
-            <Text style={styles.benefitText}>{text}</Text>
+            <Text style={{ fontSize: 15, color: accent, width: 22 }}>{icon}</Text>
+            <Text style={[t.body, { flex: 1 }]}>{text}</Text>
           </View>
         ))}
       </View>
 
       <Pressable
-        style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [styles.primaryBtn, { backgroundColor: accent, opacity: pressed ? 0.85 : 1, width: "100%" }]}
         onPress={onNext}
       >
         <Text style={styles.primaryBtnText}>Build my safety profile →</Text>
       </Pressable>
 
-      <Text style={styles.welcomeDisclaimer}>
+      <Text style={[styles.disclaimer, { color: colors.textMuted }]}>
         Takes 60 seconds · No credit card · Private by design
       </Text>
     </ScrollView>
@@ -239,141 +328,91 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
 
 // ── Step 1: Household ───────────────────────────────────────────────────────
 const VULNERABILITIES = [
-  "Young children (under 12)",
-  "Teens (12–17)",
-  "Elderly adults (65+)",
-  "Expecting / pregnant",
+  "Young children (under 12)", "Teens (12–17)", "Elderly adults (65+)", "Expecting / pregnant",
 ];
-
 const SIZES = [1, 2, 3, 4, "5+"];
 
-function StepHousehold({
-  profile,
-  update,
-  onNext,
-  onBack,
-}: {
-  profile: Profile;
-  update: (p: Partial<Profile>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
+function StepHousehold({ colors, t, accent, profile, update, onNext, onBack }: any) {
   return (
     <View style={styles.stepRoot}>
-      <StepHeader step={1} title="Who are you protecting?" onBack={onBack} />
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepContent}>
-        <Text style={styles.fieldLabel}>Household size</Text>
+      <StepHeader step={1} title="Who are you protecting?" onBack={onBack} colors={colors} t={t} accent={accent} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepBody}>
+        <Text style={[t.label, styles.fieldGap]}>Household size</Text>
         <View style={styles.sizeRow}>
           {SIZES.map((s) => {
             const val = s === "5+" ? 5 : (s as number);
+            const active = profile.householdSize === val;
             return (
               <Pressable
                 key={String(s)}
                 onPress={() => update({ householdSize: val })}
-                style={[styles.sizeBox, profile.householdSize === val && styles.sizeBoxActive]}
+                style={[styles.sizeBox, { borderColor: colors.border, backgroundColor: colors.surface }, active && { backgroundColor: accent, borderColor: accent }]}
               >
-                <Text style={[styles.sizeText, profile.householdSize === val && styles.sizeTextActive]}>
-                  {s}
-                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: active ? "#fbf1ec" : colors.textMuted }}>{s}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        <Text style={[styles.fieldLabel, { marginTop: spacing.xl }]}>
-          Anyone in your household who may be more vulnerable?
-        </Text>
+        <Text style={[t.label, styles.fieldGapLg]}>Vulnerable household members</Text>
         <View style={styles.chipWrap}>
           {VULNERABILITIES.map((v) => (
-            <Chip
-              key={v}
-              label={v}
-              active={profile.vulnerabilities.includes(v)}
-              onPress={() => update({ vulnerabilities: toggle(profile.vulnerabilities, v) })}
-            />
+            <Chip key={v} label={v} active={profile.vulnerabilities.includes(v)} onPress={() => update({ vulnerabilities: toggle(profile.vulnerabilities, v) })} colors={colors} />
           ))}
         </View>
 
-        <View style={styles.contextBox}>
-          <Text style={styles.contextText}>
-            Children and the elderly are often at higher risk from the same recall event.
-            This helps us flag what matters most for your household.
+        <View style={[styles.contextBox, { backgroundColor: colors.surface, borderLeftColor: accent }]}>
+          <Text style={{ fontSize: 12, color: colors.textSoft, lineHeight: 18 }}>
+            Children and elderly adults often face higher risk from the same recall event — this shapes
+            how we prioritize alerts for your household.
           </Text>
         </View>
       </ScrollView>
-
-      <NextButton onPress={onNext} />
+      <NextButton onPress={onNext} colors={colors} />
     </View>
   );
 }
 
 // ── Step 2: Sensitivities ───────────────────────────────────────────────────
-const ALLERGIES = [
-  "Peanuts", "Tree nuts", "Dairy", "Gluten", "Shellfish",
-  "Eggs", "Soy", "Sesame", "Fish",
-];
+const ALLERGIES = ["Peanuts", "Tree nuts", "Dairy", "Gluten", "Shellfish", "Eggs", "Soy", "Sesame", "Fish"];
 
-function StepSensitivities({
-  profile,
-  update,
-  onNext,
-  onBack,
-}: {
-  profile: Profile;
-  update: (p: Partial<Profile>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
+function StepSensitivities({ colors, t, accent, profile, update, onNext, onBack }: any) {
   return (
     <View style={styles.stepRoot}>
-      <StepHeader step={2} title="Any food sensitivities?" onBack={onBack} />
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepContent}>
-        <Text style={styles.fieldLabel}>Select all that apply</Text>
+      <StepHeader step={2} title="Any food sensitivities?" onBack={onBack} colors={colors} t={t} accent={accent} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepBody}>
+        <Text style={[t.label, styles.fieldGap]}>Select all that apply</Text>
         <View style={styles.chipWrap}>
           {ALLERGIES.map((a) => (
-            <Chip
-              key={a}
-              label={a}
-              active={profile.allergies.includes(a)}
-              onPress={() => update({ allergies: toggle(profile.allergies, a) })}
-              accent
-            />
+            <Chip key={a} label={a} active={profile.allergies.includes(a)} onPress={() => update({ allergies: toggle(profile.allergies, a) })} accent colors={colors} />
           ))}
         </View>
-
-        <View style={styles.contextBox}>
-          <Text style={styles.contextText}>
-            ~40% of FDA food recalls involve undeclared allergens. Knowing yours means we surface
-            the alerts that could actually harm your household — and mute the noise.
+        <View style={[styles.contextBox, { backgroundColor: colors.surface, borderLeftColor: accent, marginBottom: spacing.xl }]}>
+          <Text style={{ fontSize: 12, color: colors.textSoft, lineHeight: 18 }}>
+            ~40% of FDA food recalls involve undeclared allergens. Knowing yours helps us surface only
+            the recalls that could actually affect your household.
           </Text>
         </View>
 
-        <Text style={[styles.fieldLabel, { marginTop: spacing.xl }]}>
-          Does anyone in your household manage medications?
-        </Text>
+        <Text style={[t.label, styles.fieldGap]}>Does anyone manage medications?</Text>
         <View style={styles.toggleRow}>
-          {([false, true] as const).map((val) => (
-            <Pressable
-              key={String(val)}
-              onPress={() => update({ medicationsFlag: val })}
-              style={[styles.toggleBtn, profile.medicationsFlag === val && styles.toggleBtnActive]}
-            >
-              <Text style={[styles.toggleText, profile.medicationsFlag === val && styles.toggleTextActive]}>
-                {val ? "Yes" : "No"}
-              </Text>
-            </Pressable>
-          ))}
+          {([false, true] as const).map((val) => {
+            const active = profile.medicationsFlag === val;
+            return (
+              <Pressable key={String(val)} onPress={() => update({ medicationsFlag: val })}
+                style={[styles.toggleBtn, { borderColor: colors.border, backgroundColor: colors.surface }, active && { backgroundColor: accent, borderColor: accent }]}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: active ? "#fbf1ec" : colors.textMuted }}>{val ? "Yes" : "No"}</Text>
+              </Pressable>
+            );
+          })}
         </View>
         {profile.medicationsFlag && (
-          <Text style={styles.hintText}>
+          <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 }}>
             Drug recall alerts will appear in your personalized feed.
           </Text>
         )}
       </ScrollView>
-
-      <NextButton onPress={onNext} />
+      <NextButton onPress={onNext} colors={colors} />
     </View>
   );
 }
@@ -387,107 +426,108 @@ const CATEGORY_OPTIONS = [
   { id: "vehicle", label: "Vehicles", sub: "NHTSA recall database" },
 ];
 
-function StepCategories({
-  profile,
-  update,
-  onNext,
-  onBack,
-}: {
-  profile: Profile;
-  update: (p: Partial<Profile>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
+function StepCategories({ colors, t, accent, profile, update, onNext, onBack }: any) {
   return (
     <View style={styles.stepRoot}>
-      <StepHeader step={3} title="What should we watch?" onBack={onBack} />
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepContent}>
-        <Text style={styles.fieldLabel}>Monitor these categories</Text>
+      <StepHeader step={3} title="What should we watch?" onBack={onBack} colors={colors} t={t} accent={accent} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepBody}>
+        <Text style={[t.label, styles.fieldGap]}>Monitor these categories</Text>
         {CATEGORY_OPTIONS.map(({ id, label, sub }) => {
           const active = profile.categories.includes(id);
           return (
-            <Pressable
-              key={id}
-              onPress={() => update({ categories: toggle(profile.categories, id) })}
-              style={[styles.categoryRow, active && styles.categoryRowActive]}
-            >
+            <Pressable key={id} onPress={() => update({ categories: toggle(profile.categories, id) })}
+              style={[styles.categoryRow, { borderColor: colors.border, backgroundColor: colors.surface }, active && { borderColor: accent, backgroundColor: "rgba(198,91,69,0.08)" }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.categoryLabel, active && { color: colors.text }]}>{label}</Text>
-                <Text style={styles.categorySub}>{sub}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: active ? colors.text : colors.textSoft, marginBottom: 2 }}>{label}</Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted }}>{sub}</Text>
               </View>
-              <View style={[styles.checkCircle, active && styles.checkCircleActive]}>
-                {active && <Text style={styles.checkMark}>✓</Text>}
+              <View style={[styles.checkCircle, { borderColor: colors.border }, active && { backgroundColor: accent, borderColor: accent }]}>
+                {active && <Text style={{ fontSize: 10, color: "#fbf1ec", fontWeight: "800" }}>✓</Text>}
               </View>
             </Pressable>
           );
         })}
 
-        <Text style={[styles.fieldLabel, { marginTop: spacing.xl }]}>Alert threshold</Text>
-        {(["HIGH", "ALL"] as const).map((thresh) => (
-          <Pressable
-            key={thresh}
-            onPress={() => update({ alertThreshold: thresh })}
-            style={[styles.threshRow, profile.alertThreshold === thresh && styles.threshRowActive]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.threshLabel, profile.alertThreshold === thresh && { color: colors.text }]}>
-                {thresh === "HIGH" ? "High risk only" : "All recalls"}
-              </Text>
-              <Text style={styles.threshSub}>
-                {thresh === "HIGH"
-                  ? "Class I recalls — immediate danger to health"
-                  : "All FDA enforcement actions, including Class II and III"}
-              </Text>
-            </View>
-            <View style={[styles.radio, profile.alertThreshold === thresh && styles.radioActive]} />
-          </Pressable>
-        ))}
+        <Text style={[t.label, { marginTop: spacing.xl, marginBottom: spacing.sm }]}>Alert threshold</Text>
+        {(["HIGH", "ALL"] as const).map((thresh) => {
+          const active = profile.alertThreshold === thresh;
+          return (
+            <Pressable key={thresh} onPress={() => update({ alertThreshold: thresh })}
+              style={[styles.categoryRow, { borderColor: colors.border, backgroundColor: colors.surface }, active && { borderColor: accent, backgroundColor: "rgba(198,91,69,0.08)" }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: active ? colors.text : colors.textSoft, marginBottom: 2 }}>
+                  {thresh === "HIGH" ? "High risk only" : "All recalls"}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, lineHeight: 16 }}>
+                  {thresh === "HIGH" ? "Class I recalls — immediate danger to health" : "All FDA enforcement actions, including Class II and III"}
+                </Text>
+              </View>
+              <View style={[styles.radio, { borderColor: active ? accent : colors.border }, active && { backgroundColor: accent }]} />
+            </Pressable>
+          );
+        })}
       </ScrollView>
-
-      <NextButton onPress={onNext} />
+      <NextButton onPress={onNext} colors={colors} />
     </View>
   );
 }
 
 // ── Step 4: Contact ─────────────────────────────────────────────────────────
-function StepContact({
-  profile,
-  update,
-  onSubmit,
-  onBack,
-  submitting,
-  error,
-}: {
-  profile: Profile;
-  update: (p: Partial<Profile>) => void;
-  onSubmit: () => void;
-  onBack: () => void;
-  submitting: boolean;
-  error: string;
-}) {
+function StepContact({ colors, t, accent, profile, update, onSubmit, onBack, submitting, error }: any) {
+  const [locating, setLocating] = useState(false);
+  const [locError, setLocError] = useState("");
+
+  const detectLocation = async () => {
+    setLocating(true);
+    setLocError("");
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setLocError("Location permission denied. Enter your ZIP manually.");
+        setLocating(false);
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      // Reverse geocode via OpenStreetMap Nominatim (free, no key)
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`,
+        { headers: { "User-Agent": "RecallRadar/1.0" } }
+      );
+      const geo = await res.json();
+      const zip = geo?.address?.postcode?.split("-")[0] ?? "";
+      if (zip && /^\d{5}$/.test(zip)) {
+        update({ zip });
+        setLocError("");
+      } else {
+        setLocError("Couldn't detect ZIP — enter it manually.");
+      }
+    } catch {
+      setLocError("Location unavailable. Enter your ZIP manually.");
+    }
+    setLocating(false);
+  };
+
   return (
     <View style={styles.stepRoot}>
-      <StepHeader step={4} title="Almost done." onBack={onBack} />
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepContent}>
-        <Text style={styles.fieldLabel}>First name</Text>
+      <StepHeader step={4} title="Almost done." onBack={onBack} colors={colors} t={t} accent={accent} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.stepBody}>
+        <Text style={[t.label, styles.fieldGap]}>First name</Text>
         <TextInput
-          style={styles.textInput}
+          style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
           value={profile.name}
           onChangeText={(v) => update({ name: v })}
           placeholder="Your first name"
           placeholderTextColor={colors.textMuted}
           autoCapitalize="words"
           autoCorrect={false}
-          selectionColor={colors.accent}
+          selectionColor={accent}
         />
 
-        <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>
-          Email <Text style={{ color: colors.alert }}>*</Text>
+        <Text style={[t.label, styles.fieldGapLg]}>
+          Email <Text style={{ color: accent }}>*</Text>
         </Text>
         <TextInput
-          style={styles.textInput}
+          style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
           value={profile.email}
           onChangeText={(v) => update({ email: v })}
           placeholder="you@example.com"
@@ -495,48 +535,72 @@ function StepContact({
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
-          selectionColor={colors.accent}
+          selectionColor={accent}
         />
 
-        <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>
-          ZIP code <Text style={styles.optionalTag}>(optional)</Text>
+        <Text style={[t.label, styles.fieldGapLg]}>
+          ZIP code <Text style={{ color: colors.textMuted, fontWeight: "400", textTransform: "none", letterSpacing: 0 }}>(optional)</Text>
         </Text>
-        <TextInput
-          style={styles.textInput}
-          value={profile.zip}
-          onChangeText={(v) => update({ zip: v.replace(/\D/g, "").slice(0, 5) })}
-          placeholder="90210"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="numeric"
-          maxLength={5}
-          selectionColor={colors.accent}
-        />
-        <Text style={styles.hintText}>
-          Used for location-relevant enforcement actions only.
-        </Text>
+        <View style={styles.zipRow}>
+          <TextInput
+            style={[styles.input, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+            value={profile.zip}
+            onChangeText={(v) => update({ zip: v.replace(/\D/g, "").slice(0, 5) })}
+            placeholder="90210"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="numeric"
+            maxLength={5}
+            selectionColor={accent}
+          />
+          <Pressable
+            onPress={detectLocation}
+            disabled={locating}
+            style={({ pressed }) => [
+              styles.locBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            {locating ? (
+              <ActivityIndicator size="small" color={accent} />
+            ) : (
+              <>
+                <Text style={{ fontSize: 15 }}>◎</Text>
+                <Text style={{ fontSize: 11, color: colors.textSoft, fontWeight: "600", marginTop: 2 }}>Detect</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+        {locError ? (
+          <Text style={{ fontSize: 11, color: colors.alert, marginTop: spacing.sm }}>{locError}</Text>
+        ) : profile.zip.length === 5 ? (
+          <Text style={{ fontSize: 11, color: colors.safe, marginTop: spacing.sm }}>✓ ZIP detected</Text>
+        ) : (
+          <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 }}>
+            Used for location-relevant enforcement actions only.
+          </Text>
+        )}
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={[styles.errorBox, { backgroundColor: "rgba(255,59,48,0.1)", borderColor: "rgba(255,59,48,0.25)" }]}>
+            <Text style={{ fontSize: 13, color: colors.alert }}>{error}</Text>
           </View>
         ) : null}
 
-        <View style={styles.privacyBox}>
-          <Text style={styles.privacyText}>
-            ◈ Your profile is private and used only to personalize your recall alerts.
+        <View style={[styles.privacyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
+            ◈  Your profile is private and used only to personalize your recall alerts.
             We never sell your data. You can update your preferences at any time.
           </Text>
         </View>
       </ScrollView>
 
       <Pressable
-        style={({ pressed }) => [styles.primaryBtn, styles.submitBtn, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [styles.primaryBtn, { backgroundColor: accent, opacity: pressed ? 0.85 : 1 }]}
         onPress={onSubmit}
         disabled={submitting}
       >
-        {submitting ? (
-          <ActivityIndicator color="#fbf1ec" size="small" />
-        ) : (
+        {submitting ? <ActivityIndicator color="#fbf1ec" size="small" /> : (
           <Text style={styles.primaryBtnText}>Create my safety profile →</Text>
         )}
       </Pressable>
@@ -544,269 +608,107 @@ function StepContact({
   );
 }
 
-// ── shared sub-components ───────────────────────────────────────────────────
-function StepHeader({
-  step,
-  title,
-  onBack,
-}: {
-  step: number;
-  title: string;
-  onBack: () => void;
-}) {
-  return (
-    <View style={styles.stepHeaderWrap}>
-      <View style={styles.stepTopRow}>
-        <Pressable onPress={onBack} style={styles.backBtn} hitSlop={12}>
-          <Text style={styles.backText}>← Back</Text>
-        </Pressable>
-        <Text style={styles.stepCounter}>{step} of {TOTAL_STEPS}</Text>
-      </View>
-      <ProgressDots step={step} />
-      <Text style={styles.stepTitle}>{title}</Text>
-    </View>
-  );
-}
-
-function NextButton({ onPress, label = "Continue →" }: { onPress: () => void; label?: string }) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.primaryBtn, styles.nextBtn, pressed && { opacity: 0.85 }]}
-      onPress={onPress}
-    >
-      <Text style={styles.primaryBtnText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 // ── styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1 },
   screen: { flex: 1 },
 
   // welcome
   welcomeContent: {
     flexGrow: 1,
     padding: spacing.xl,
-    paddingTop: 64,
+    paddingTop: 56,
     alignItems: "center",
   },
-  welcomeOrb: { marginBottom: spacing.xl },
-  orbRing: { fontSize: 64, color: colors.accent, opacity: 0.85 },
-  welcomeWordmark: {
+  welcomeTopBar: {
+    flexDirection: "row",
+    width: "100%",
+    marginBottom: spacing.xl,
+    alignItems: "center",
+  },
+  themeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  wordmark: {
     fontSize: 14,
     fontWeight: "200",
     letterSpacing: 5,
-    color: colors.text,
     marginBottom: spacing.xl,
   },
   welcomeHero: {
     fontSize: 36,
     fontWeight: "700",
-    color: colors.text,
     letterSpacing: -1,
     lineHeight: 42,
     textAlign: "center",
     marginBottom: spacing.lg,
   },
-  welcomeBody: {
-    ...type.body,
-    textAlign: "center",
-    maxWidth: 300,
-    marginBottom: spacing.xxl,
-    lineHeight: 22,
-  },
+  welcomeBody: { textAlign: "center", maxWidth: 300, marginBottom: spacing.xxl, lineHeight: 22 },
   benefitList: { width: "100%", gap: spacing.md, marginBottom: spacing.xxl },
   benefitRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  benefitIcon: { fontSize: 16, color: colors.accent, width: 20 },
-  benefitText: { ...type.body, flex: 1 },
-  welcomeDisclaimer: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: spacing.md,
-    letterSpacing: 0.2,
-  },
+  disclaimer: { fontSize: 11, marginTop: spacing.md, letterSpacing: 0.2 },
 
-  // steps
+  // step shell
   stepRoot: { flex: 1 },
-  stepHeaderWrap: {
+  stepHeader: {
     paddingHorizontal: spacing.xl,
     paddingTop: 56,
     paddingBottom: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
-  stepTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.md,
-  },
-  backBtn: {},
-  backText: { fontSize: 14, color: colors.textMuted, fontWeight: "500" },
-  stepCounter: { ...type.label },
-  stepTitle: { ...type.h1, marginTop: spacing.md },
-  stepContent: { padding: spacing.xl, paddingBottom: spacing.xxl },
+  stepTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.md },
+  stepBody: { padding: spacing.xl, paddingBottom: spacing.xxl },
 
-  // progress dots
-  dotsRow: { flexDirection: "row", gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
-  dotActive: { backgroundColor: colors.accent, opacity: 0.4 },
-  dotCurrent: { backgroundColor: colors.accent, opacity: 1, width: 18 },
-
-  // buttons
-  primaryBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingVertical: 15,
-    alignItems: "center",
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.xl,
-  },
-  nextBtn: {},
-  submitBtn: {},
-  primaryBtnText: { color: "#fbf1ec", fontWeight: "700", fontSize: 15, letterSpacing: 0.3 },
-
-  // fields
-  fieldLabel: { ...type.label, marginBottom: spacing.sm },
-  textInput: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
-    color: colors.text,
-    fontSize: 15,
-  },
-  optionalTag: { color: colors.textMuted, fontWeight: "400", textTransform: "none", letterSpacing: 0 },
-  hintText: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 },
-
-  // chips
+  // shared
+  fieldGap: { marginBottom: spacing.sm },
+  fieldGapLg: { marginTop: spacing.lg, marginBottom: spacing.sm },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "transparent",
-  },
-  chipActive: { backgroundColor: colors.surface2, borderColor: colors.borderStrong },
-  chipAccentActive: { backgroundColor: "rgba(198,91,69,0.15)", borderColor: colors.accent },
-  chipText: { fontSize: 13, color: colors.textMuted, fontWeight: "500" },
-  chipActiveText: { color: colors.text },
-  chipAccentText: { color: colors.accent, fontWeight: "600" },
-
-  // household size
   sizeRow: { flexDirection: "row", gap: spacing.sm },
   sizeBox: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 52, height: 52, borderRadius: 12, borderWidth: 1,
+    alignItems: "center", justifyContent: "center",
   },
-  sizeBoxActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  sizeText: { fontSize: 16, fontWeight: "700", color: colors.textMuted },
-  sizeTextActive: { color: "#fbf1ec" },
-
-  // yes/no toggle
+  contextBox: { padding: spacing.md, borderRadius: 12, borderLeftWidth: 2 },
   toggleRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
   toggleBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    backgroundColor: colors.surface,
+    flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, alignItems: "center",
   },
-  toggleBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  toggleText: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
-  toggleTextActive: { color: "#fbf1ec" },
-
-  // category rows
   categoryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    marginBottom: spacing.sm,
+    flexDirection: "row", alignItems: "center", padding: spacing.lg,
+    borderRadius: 12, borderWidth: 1, marginBottom: spacing.sm,
   },
-  categoryRowActive: { borderColor: colors.accent, backgroundColor: "rgba(198,91,69,0.08)" },
-  categoryLabel: { fontSize: 14, fontWeight: "600", color: colors.textSoft, marginBottom: 2 },
-  categorySub: { fontSize: 11, color: colors.textMuted },
   checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 22, height: 22, borderRadius: 11, borderWidth: 1.5,
+    alignItems: "center", justifyContent: "center",
   },
-  checkCircleActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  checkMark: { fontSize: 11, color: "#fbf1ec", fontWeight: "800" },
+  radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, marginLeft: spacing.md },
 
-  // threshold rows
-  threshRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    marginBottom: spacing.sm,
+  // contact
+  input: {
+    borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: spacing.lg, paddingVertical: 14,
+    fontSize: 15,
   },
-  threshRowActive: { borderColor: colors.accent, backgroundColor: "rgba(198,91,69,0.08)" },
-  threshLabel: { fontSize: 14, fontWeight: "600", color: colors.textSoft, marginBottom: 2 },
-  threshSub: { fontSize: 11, color: colors.textMuted, lineHeight: 16 },
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    marginLeft: spacing.md,
+  zipRow: { flexDirection: "row", gap: spacing.sm, alignItems: "stretch" },
+  locBtn: {
+    width: 68, borderRadius: 12, borderWidth: 1,
+    alignItems: "center", justifyContent: "center", paddingVertical: 10,
   },
-  radioActive: { borderColor: colors.accent, backgroundColor: colors.accent },
-
-  // context / privacy boxes
-  contextBox: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.accent,
-    marginTop: spacing.lg,
-  },
-  contextText: { fontSize: 12, color: colors.textSoft, lineHeight: 18 },
+  errorBox: { marginTop: spacing.md, borderRadius: 12, padding: spacing.md, borderWidth: 1 },
   privacyBox: {
-    marginTop: spacing.xl,
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginTop: spacing.xl, padding: spacing.md, borderRadius: 12, borderWidth: 1,
   },
-  privacyText: { fontSize: 12, color: colors.textMuted, lineHeight: 18 },
 
-  // error
-  errorBox: {
-    marginTop: spacing.md,
-    backgroundColor: "rgba(255,59,48,0.1)",
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: "rgba(255,59,48,0.25)",
+  // button
+  primaryBtn: {
+    borderRadius: 12, paddingVertical: 15,
+    alignItems: "center", marginHorizontal: spacing.xl, marginBottom: spacing.xl,
   },
-  errorText: { fontSize: 13, color: colors.alert },
+  primaryBtnText: { color: "#fbf1ec", fontWeight: "700", fontSize: 15, letterSpacing: 0.3 },
 });

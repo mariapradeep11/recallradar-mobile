@@ -3,10 +3,11 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { colors } from "../src/theme";
+import { ThemeProvider, useTheme } from "../src/context/ThemeContext";
 import { Onboarding } from "../src/components/Onboarding";
 
-export default function RootLayout() {
+function AppShell() {
+  const { colors, mode } = useTheme();
   const [checked, setChecked] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
 
@@ -17,12 +18,11 @@ export default function RootLayout() {
     });
   }, []);
 
-  // Hold until we know onboarding state — prevents tab flash
   if (!checked) return null;
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="light" />
+    <>
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
       {!onboarded ? (
         <Onboarding onComplete={() => setOnboarded(true)} />
       ) : (
@@ -36,6 +36,16 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
         </Stack>
       )}
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppShell />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

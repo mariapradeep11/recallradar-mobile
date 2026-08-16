@@ -29,6 +29,12 @@
         {
           "cameraPermission": "RecallRadar uses your camera to scan product barcodes."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RecallRadar uses your location to fill in your ZIP code automatically for location-relevant recall alerts."
+        }
       ]
     ],
     "experiments": {

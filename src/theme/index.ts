@@ -14,7 +14,9 @@ export type ThemeColors = {
   borderStrong: string;
 };
 
-export const colors: ThemeColors = {
+export type ThemeMode = "dark" | "light";
+
+export const darkColors: ThemeColors = {
   bg: "#0c0b0a",
   surface: "rgba(247,243,238,0.05)",
   surface2: "rgba(247,243,238,0.09)",
@@ -29,6 +31,25 @@ export const colors: ThemeColors = {
   border: "rgba(247,243,238,0.1)",
   borderStrong: "rgba(247,243,238,0.18)",
 };
+
+export const lightColors: ThemeColors = {
+  bg: "#f5f0eb",
+  surface: "rgba(26,22,18,0.05)",
+  surface2: "rgba(26,22,18,0.09)",
+  text: "#1a1612",
+  textSoft: "rgba(26,22,18,0.62)",
+  textMuted: "rgba(26,22,18,0.36)",
+  accent: "#c65b45",
+  accentStrong: "#9e3d28",
+  alert: "#d92b20",
+  caution: "#b07d10",
+  safe: "#1e8e3e",
+  border: "rgba(26,22,18,0.1)",
+  borderStrong: "rgba(26,22,18,0.2)",
+};
+
+// Default export for components that haven't migrated to ThemeContext yet
+export const colors = darkColors;
 
 export const spacing = {
   xs: 4,
@@ -46,30 +67,30 @@ export const radius = {
   pill: 999,
 } as const;
 
-export const type = {
+export const makeType = (c: ThemeColors) => ({
   eyebrow: {
     fontSize: 10,
     letterSpacing: 1.4,
     textTransform: "uppercase" as const,
     fontWeight: "700" as const,
-    color: colors.accent,
+    color: c.accent,
   },
   h1: {
     fontSize: 26,
     fontWeight: "700" as const,
-    color: colors.text,
+    color: c.text,
     letterSpacing: -0.4,
     lineHeight: 32,
   },
   h2: {
     fontSize: 20,
     fontWeight: "700" as const,
-    color: colors.text,
+    color: c.text,
     letterSpacing: -0.2,
   },
   body: {
     fontSize: 14,
-    color: colors.textSoft,
+    color: c.textSoft,
     lineHeight: 20,
   },
   label: {
@@ -77,6 +98,8 @@ export const type = {
     letterSpacing: 0.8,
     textTransform: "uppercase" as const,
     fontWeight: "600" as const,
-    color: colors.textMuted,
+    color: c.textMuted,
   },
-} as const;
+});
+
+export const type = makeType(darkColors);
