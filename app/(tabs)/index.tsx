@@ -21,6 +21,7 @@ import {
   type Recall,
   searchRecalls,
 } from "../../src/lib/api";
+import { usePremium } from "../../src/hooks/usePremium";
 
 const CATEGORIES: Category[] = ["food", "drug", "device", "consumer"];
 const EXAMPLES = ["chicken", "ibuprofen", "Tylenol", "peanut butter", "baby formula"];
@@ -83,6 +84,7 @@ export default function SearchScreen() {
   const { colors, type: t } = useTheme();
   const insets = useSafeAreaInsets();
   const { q: scannedQuery } = useLocalSearchParams<{ q?: string }>();
+  const { isPremium } = usePremium();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category>("food");
   const [results, setResults] = useState<Recall[]>([]);
@@ -259,7 +261,7 @@ export default function SearchScreen() {
       <FlatList
         data={results}
         keyExtractor={(_, i) => String(i)}
-        renderItem={({ item, index }) => <AnimatedCard item={item} index={index} />}
+        renderItem={({ item, index }) => <AnimatedCard item={item} index={index} isPremium={isPremium} />}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={renderEmpty}
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
@@ -270,7 +272,7 @@ export default function SearchScreen() {
   );
 }
 
-function AnimatedCard({ item, index }: { item: Recall; index: number }) {
+function AnimatedCard({ item, index, isPremium }: { item: Recall; index: number; isPremium: boolean }) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
 
@@ -283,7 +285,7 @@ function AnimatedCard({ item, index }: { item: Recall; index: number }) {
 
   return (
     <Animated.View style={{ opacity, transform: [{ translateY }] }}>
-      <RecallCard recall={item} />
+      <RecallCard recall={item} isPremium={isPremium} />
     </Animated.View>
   );
 }
